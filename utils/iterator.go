@@ -3,8 +3,29 @@ package utils
 import "context"
 
 type Iterable[E any] interface {
+
+	// Iterator use for range
+	// it very slow, not recommend using it
+	// example:
+	//
+	//  iter := iterable.Iterator()
+	// 	for e := range iter.C {
+	// 		do something...
+	//	}
 	Iterator() *Iterator[E]
+
+	// Iter use for range
+	// it very slow, not recommend using it
+	// example:
+	//
+	// 	for e := range iterable.Iter() {
+	// 		do something...
+	//	}
 	Iter() <-chan E
+
+	// Foreach range the container
+	// return false to break loop
+	Foreach(func(index int, element E) bool)
 }
 
 // Iterator defines an iterator over a Set, its C channel can be used to range over the Set's
@@ -37,32 +58,4 @@ func newIterator[E any]() (*Iterator[E], chan<- E) {
 		ctx:    ctx,
 		cancel: cancel,
 	}, itemChan
-}
-
-type Slice[E any] []E
-
-func (s Slice[E]) Iter() <-chan E {
-	ch := make(chan E)
-	go func() {
-		for _, elem := range s {
-			ch <- elem
-		}
-		close(ch)
-	}()
-	return ch
-}
-
-func (s Slice[E]) Iterator() *Iterator[E] {
-	iterator, ch := newIterator[E]()
-	go func() {
-		defer close(ch)
-		for _, elem := range s {
-			select {
-			case <-iterator.Ctx().Done():
-				return
-			case ch <- elem:
-			}
-		}
-	}()
-	return iterator
 }

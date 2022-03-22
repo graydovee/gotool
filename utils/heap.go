@@ -25,6 +25,10 @@ func (h *MaxHeap[E]) Iter() <-chan E {
 	return h.nodes.Iter()
 }
 
+func (h *MaxHeap[E]) Foreach(f func(index int, element E) bool) {
+	h.nodes.Foreach(f)
+}
+
 func (h *MaxHeap[E]) Len() int {
 	return len(h.nodes)
 }
@@ -90,6 +94,10 @@ func (h *MinHeap[E]) Iterator() *Iterator[E] {
 
 func (h *MinHeap[E]) Iter() <-chan E {
 	return h.nodes.Iter()
+}
+
+func (h *MinHeap[E]) Foreach(f func(index int, element E) bool) {
+	h.nodes.Foreach(f)
 }
 
 func (h *MinHeap[E]) Len() int {
