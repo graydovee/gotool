@@ -1,10 +1,12 @@
 package netutils
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
 
 func TestPing(t *testing.T) {
-	Ping("192.168.10.22", 1 * time.Second)
+	succ := Ping("192.123.12.3", 1*time.Second)
+	fmt.Println(succ)
 }

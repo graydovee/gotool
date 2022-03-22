@@ -1,153 +1,112 @@
 package netutils
 
 import (
-	"bytes"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"time"
 )
-const (
-	icmpv4EchoRequest = 8
-	icmpv4EchoReply   = 0
-	icmpv6EchoRequest = 128
-	icmpv6EchoReply   = 129
-)
-type icmpMessage struct {
-	Type     int             // type
-	Code     int             // code
-	Checksum int             // checksum
-	Body     icmpMessageBody // body
-}
-type icmpMessageBody interface {
-	Len() int
-	Marshal() ([]byte, error)
-}
-// Marshal returns the binary enconding of the ICMP echo request or
-// reply message m.
-func (m *icmpMessage) Marshal() ([]byte, error) {
-	b := []byte{byte(m.Type), byte(m.Code), 0, 0}
-	if m.Body != nil && m.Body.Len() != 0 {
-		mb, err := m.Body.Marshal()
-		if err != nil {
-			return nil, err
-		}
-		b = append(b, mb...)
-	}
-	switch m.Type {
-	case icmpv6EchoRequest, icmpv6EchoReply:
-		return b, nil
-	}
-	csumcv := len(b) - 1 // checksum coverage
-	s := uint32(0)
-	for i := 0; i < csumcv; i += 2 {
-		s += uint32(b[i+1])<<8 | uint32(b[i])
-	}
-	if csumcv&1 == 0 {
-		s += uint32(b[csumcv])
-	}
-	s = s>>16 + s&0xffff
-	s = s + s>>16
-	// Place checksum back in header; using ^= avoids the
-	// assumption the checksum bytes are zero.
-	b[2] ^= byte(^s & 0xff)
-	b[3] ^= byte(^s >> 8)
-	return b, nil
-}
-// parseICMPMessage parses b as an ICMP message.
-func parseICMPMessage(b []byte) (*icmpMessage, error) {
-	msglen := len(b)
-	if msglen < 4 {
-		return nil, errors.New("message too short")
-	}
-	m := &icmpMessage{Type: int(b[0]), Code: int(b[1]), Checksum: int(b[2])<<8 | int(b[3])}
-	if msglen > 4 {
-		var err error
-		switch m.Type {
-		case icmpv4EchoRequest, icmpv4EchoReply, icmpv6EchoRequest, icmpv6EchoReply:
-			m.Body, err = parseICMPEcho(b[4:])
-			if err != nil {
-				return nil, err
-			}
+
+func Ping(address string, timeout time.Duration) *PingResult {
+	hosts, err := net.LookupHost(address)
+	if err != nil {
+		return &PingResult{
+			TargetAddr: address,
+			Err:        err,
 		}
 	}
-	return m, nil
-}
-// imcpEcho represenets an ICMP echo request or reply message body.
-type icmpEcho struct {
-	ID   int    // identifier
-	Seq  int    // sequence number
-	Data []byte // data
-}
-func (p *icmpEcho) Len() int {
-	if p == nil {
-		return 0
+	var res *PingResult
+	for _, host := range hosts {
+		res = Pinger(host, timeout)
+		if res.Err == nil {
+			return res
+		}
 	}
-	return 4 + len(p.Data)
-}
-// Marshal returns the binary enconding of the ICMP echo request or
-// reply message body p.
-func (p *icmpEcho) Marshal() ([]byte, error) {
-	b := make([]byte, 4+len(p.Data))
-	b[0], b[1] = byte(p.ID>>8), byte(p.ID&0xff)
-	b[2], b[3] = byte(p.Seq>>8), byte(p.Seq&0xff)
-	copy(b[4:], p.Data)
-	return b, nil
-}
-// parseICMPEcho parses b as an ICMP echo request or reply message body.
-func parseICMPEcho(b []byte) (*icmpEcho, error) {
-	bodylen := len(b)
-	p := &icmpEcho{ID: int(b[0])<<8 | int(b[1]), Seq: int(b[2])<<8 | int(b[3])}
-	if bodylen > 4 {
-		p.Data = make([]byte, bodylen-4)
-		copy(p.Data, b[4:])
+	if res.Err == nil {
+		res.Err = errors.New("ip not found")
 	}
-	return p, nil
+	return res
 }
-func Ping(address string, timeout time.Duration) (alive bool) {
-	err := Pinger(address, timeout)
-	alive = err == nil
-	return
+
+type PingResult struct {
+	TargetAddr string
+	RemoteAddr net.Addr
+	Err        error
+	Times      time.Duration
+	Resp       *IcmpMessage
+	Body       []byte
 }
-func Pinger(address string, timeout time.Duration) (err error) {
+
+func ErrPingResult(targetAddr string, err error) *PingResult {
+	return &PingResult{TargetAddr: targetAddr, Err: err}
+}
+
+func (p *PingResult) String() string {
+	if p.Err == nil {
+		return fmt.Sprintf("%d bytes from %s: times=%v", p.Resp.Len(), p.RemoteAddr.String(), p.Times)
+	}
+	return fmt.Sprintf("Error: ping %s, err: %s", p.TargetAddr, p.Err.Error())
+}
+
+func Pinger(address string, timeout time.Duration) *PingResult {
 	c, err := net.Dial("ip4:icmp", address)
 	if err != nil {
-		return
+		return ErrPingResult(address, err)
 	}
-	c.SetDeadline(time.Now().Add(timeout))
-	defer c.Close()
-	typ := icmpv4EchoRequest
-	xid, xseq := os.Getpid()&0xffff, 1
-	wb, err := (&icmpMessage{
-		Type: typ, Code: 0,
-		Body: &icmpEcho{
-			ID: xid, Seq: xseq,
-			Data: bytes.Repeat([]byte("Go Go Gadget Ping!!!"), 3),
-		},
-	}).Marshal()
+	err = c.SetDeadline(time.Now().Add(timeout))
 	if err != nil {
-		return
+		return ErrPingResult(address, err)
 	}
+	defer func() {
+		_ = c.Close()
+	}()
+	typ := ICMPv4EchoRequest
+	xid, xseq := os.Getpid()&0xffff, 1
+	req := &IcmpMessage{
+		Type: typ, Code: 0,
+		Body: &ICMPEcho{
+			ID: xid, Seq: xseq,
+			Data: make([]byte, 56),
+		},
+	}
+	wb, err := req.Marshal()
+	if err != nil {
+		return ErrPingResult(address, err)
+	}
+	start := time.Now()
 	if _, err = c.Write(wb); err != nil {
-		return
+		return ErrPingResult(address, err)
 	}
-	var m *icmpMessage
+	m := &IcmpMessage{}
 	rb := make([]byte, 20+len(wb))
+	var ttl time.Duration
 	for {
-		if _, err = c.Read(rb); err != nil {
-			return
+		l, err := c.Read(rb)
+		ttl = time.Since(start)
+		rb = rb[:l]
+		if err != nil {
+			return ErrPingResult(address, err)
 		}
 		rb = ipv4Payload(rb)
-		if m, err = parseICMPMessage(rb); err != nil {
-			return
+		if err = m.Unmarshal(rb); err != nil {
+			return ErrPingResult(address, err)
 		}
 		switch m.Type {
-		case icmpv4EchoRequest, icmpv6EchoRequest:
+		case ICMPv4EchoRequest, ICMPv6EchoRequest:
+			fmt.Println(ICMPv4EchoRequest)
 			continue
 		}
 		break
 	}
-	return
+	return &PingResult{
+		Err:        nil,
+		Body:       rb,
+		Resp:       m,
+		Times:      ttl,
+		TargetAddr: address,
+		RemoteAddr: c.RemoteAddr(),
+	}
 }
 func ipv4Payload(b []byte) []byte {
 	if len(b) < 20 {
