@@ -1,4 +1,4 @@
-package cmd
+package app
 
 import (
 	"fmt"
@@ -21,7 +21,7 @@ func getAddress(port int) string {
 
 func work(port int, results chan int) {
 	address := getAddress(port)
-	if netutils.Tcping(address, time.Duration(tcpScannerTimeout) * time.Millisecond) {
+	if netutils.Tcping(address, time.Duration(tcpScannerTimeout)*time.Millisecond) {
 		results <- port
 		return
 	}
@@ -30,9 +30,9 @@ func work(port int, results chan int) {
 
 func NewTcpScannerCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "tcpscan",
+		Use:   "tcpscan",
 		Short: "scan opened tcp port on target ip",
-		Long: "scan opened tcp port on target ip",
+		Long:  "scan opened tcp port on target ip",
 		Run: func(cmd *cobra.Command, args []string) {
 			var portMin = tcpScannerPort
 			var portMax = tcpScannerPort + tcpScannerNum
