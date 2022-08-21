@@ -2,8 +2,8 @@ package app
 
 import (
 	"fmt"
+	"github.com/grydovee/gotool/netutils"
 	"github.com/spf13/cobra"
-	"gotool/netutils"
 	"sort"
 	"strings"
 	"sync"
@@ -20,18 +20,14 @@ func testIpOenSsh(ip string, ch chan string, timeout time.Duration) {
 	var maxNum = 255
 	wg.Add(maxNum)
 	ipFormatter := strings.Replace(ip, "*", "%d", 1)
-	for i := 1; i <= maxNum; i++ {
+	for i := 1; i < maxNum; i++ {
 		go func(number int) {
 			defer wg.Done()
 			ip := fmt.Sprintf(ipFormatter, number)
-			ping := netutils.Ping(ip, timeout)
-
-			if ping {
-				addr := ip + ":22"
-				tcping := netutils.Tcping(addr, timeout)
-				if tcping {
-					ch <- ip
-				}
+			addr := ip + ":22"
+			tcping := netutils.Tcping(addr, timeout)
+			if tcping {
+				ch <- ip
 			}
 		}(i)
 	}

@@ -2,8 +2,8 @@ package app
 
 import (
 	"fmt"
+	"github.com/grydovee/gotool/netutils"
 	"github.com/spf13/cobra"
-	"gotool/netutils"
 	"sort"
 	"time"
 )
