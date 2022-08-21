@@ -1,4 +1,4 @@
-module gotool
+module github.com/grydovee/gotool
 
 go 1.18
 

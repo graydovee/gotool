@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"gotool/cmd/gotool/app"
+	"github.com/grydovee/gotool/cmd/gotool/app"
 	"os"
 )
 
