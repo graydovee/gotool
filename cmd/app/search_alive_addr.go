@@ -2,8 +2,8 @@ package app
 
 import (
 	"fmt"
+	"github.com/grydovee/gotool/netutils"
 	"github.com/spf13/cobra"
-	"gotool/netutils"
 	"sort"
 	"strings"
 	"sync"
@@ -42,7 +42,7 @@ func testIpCanPing(ip string, ch chan string, timeout time.Duration) {
 			defer wg.Done()
 			ip := fmt.Sprintf(ipFormatter, number)
 			ping := netutils.Ping(ip, timeout)
-			if ping {
+			if ping.Err != nil {
 				ch <- ip
 			}
 		}(i)
